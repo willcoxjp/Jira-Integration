@@ -5,7 +5,7 @@ compatibility_date = "2024-10-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "jira-integration"
-database_id = "REPLACE_WITH_YOUR_D1_ID"
+database_id = "4d983478-f684-4e8a-bcae-cf909291d963"
 
 # Uncomment to enable scheduled runs (e.g., 6 AM UTC weekdays)
 # [triggers]
