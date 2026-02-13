@@ -1,0 +1,12 @@
+name = "jira-integration"
+main = "src/worker.ts"
+compatibility_date = "2024-10-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "jira-integration"
+database_id = "REPLACE_WITH_YOUR_D1_ID"
+
+# Uncomment to enable scheduled runs (e.g., 6 AM UTC weekdays)
+# [triggers]
+# crons = ["0 6 * * 1-5"]
