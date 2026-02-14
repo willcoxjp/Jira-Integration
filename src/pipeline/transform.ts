@@ -9,7 +9,7 @@ import type {
   TransformResult,
   RunStats,
 } from '../types';
-import { calculateDueDate, formatDate } from '../utils/dates';
+import { calculateDueDate, formatDateUS } from '../utils/dates';
 
 /**
  * Calculate work order quantity (hours) from a Jira issue.
@@ -46,12 +46,16 @@ export function calculateQuantity(issue: JiraIssue, config: PipelineConfig): num
  */
 export function calculatePriority(issue: JiraIssue, config: PipelineConfig): number {
   // First digit: business ranking
+  // Field can be a number, string, or Jira select object like {"value":"1 - Business Critical"}
   const bizRankRaw = issue.fields[config.bizRankFieldId];
   let firstDigit = 9;
   if (bizRankRaw !== null && bizRankRaw !== undefined) {
-    const parsed = Math.floor(Number(bizRankRaw));
-    if (!isNaN(parsed) && parsed >= 0 && parsed <= 9) {
-      firstDigit = parsed;
+    let rankStr = typeof bizRankRaw === 'object' && bizRankRaw.value
+      ? String(bizRankRaw.value)
+      : String(bizRankRaw);
+    const match = rankStr.match(/^(\d)/);
+    if (match) {
+      firstDigit = parseInt(match[1], 10);
     }
   }
 
@@ -64,6 +68,7 @@ export function calculatePriority(issue: JiraIssue, config: PipelineConfig): num
 
 /**
  * Build a single Intuiflow Work Order row from a Jira issue.
+ * Matches the column format from the old Access DB export.
  */
 export function buildWorkOrderRow(
   issue: JiraIssue,
@@ -74,8 +79,9 @@ export function buildWorkOrderRow(
   releaseDate: string | null,
   config: PipelineConfig
 ): WorkOrderRow {
-  const requestDate = releaseDate ?? dueDate;
-  const promiseDate = releaseDate ?? dueDate;
+  const endRequestDate = releaseDate
+    ? formatDateUS(releaseDate)
+    : formatDateUS(dueDate);
 
   // Notes: first 50 chars of summary, commas stripped
   const notes = (issue.fields.summary || '')
@@ -85,15 +91,15 @@ export function buildWorkOrderRow(
   // Components as comma-separated string
   const components = (issue.fields.components ?? [])
     .map(c => c.name)
-    .join(',');
+    .join(';');
 
   // Labels as comma-separated string
-  const labels = (issue.fields.labels ?? []).join(',');
+  const labels = (issue.fields.labels ?? []).join(';');
 
   // Fix versions as comma-separated string
   const fixVersions = (issue.fields.fixVersions ?? [])
     .map(v => v.name)
-    .join(',');
+    .join(';');
 
   // Sprint
   const sprint = issue.fields[config.sprintFieldId] ?? '';
@@ -103,36 +109,24 @@ export function buildWorkOrderRow(
   const epicLink = issue.fields[config.epicLinkFieldId] ?? '';
 
   return {
-    OrderNumber: issue.key,
+    WorkOrderNumber: issue.key,
+    OrderDate: formatDateUS(issue.fields.created),
     PartNumber: partType.intuiflowPartNumber,
     Revision: '',
     Location: config.location,
-    OrderDate: formatDate(issue.fields.created),
-    RequestDate: requestDate,
-    PromiseDate: promiseDate,
-    StartDate: '',
-    OrderType: config.orderType,
-    Quantity: quantity,
-    QuantityTo: quantity,
-    Priority: '',
-    Expedite: '',
-    Status: 'Committed',
-    Vendor: '',
-    VendorIdentifier: '',
-    Comments: issue.fields.assignee?.displayName ?? '',
-    Notes: notes,
-    UnitOfMeasure: config.unitOfMeasure,
-    UnitOfMeasureTo: config.unitOfMeasure,
     RoutingName: config.routingName,
-    SchedulingPriority: String(priority),
-    SchedulingExpedite: '',
-    GroupName: '',
-    GroupResource: '',
+    WorkOrderQuantity: quantity,
+    EndRequestDate: endRequestDate,
+    Priority: priority,
+    Expedite: 'None',
     SalesOrderNumber: '',
     LineItem: '',
     SalesOrderQuantity: '',
     Customer: '',
     UnitPrice: '',
+    Notes: notes,
+    GroupName: '',
+    GroupResource: '',
     UserDefined1: components,
     UserDefined2: issue.fields.assignee?.displayName ?? '',
     UserDefined3: issue.fields.creator?.displayName ?? '',
@@ -144,9 +138,6 @@ export function buildWorkOrderRow(
     FinalBufferOverride: '',
     ReplenishmentPriorityLocation: '',
     GroupOrder: '',
-    ActualOrderDate: '',
-    BOMName: '',
-    EpicLink: String(epicLink || ''),
   };
 }
 

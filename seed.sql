@@ -12,10 +12,10 @@ INSERT OR REPLACE INTO settings (key, value, description) VALUES
   ('sentinel_quantity', '4.567', 'Default quantity when no estimate exists'),
   ('sentinel_close_date', '2045-12-31', 'Sentinel date for closed orders'),
   ('priority_cutoff', '30', 'Only upload orders with scheduling priority < this value'),
-  ('jql_filter', 'project = "IF" AND statusCategory != Done ORDER BY updated DESC', 'JQL query to fetch Jira issues'),
-  ('jira_effort_field', 'customfield_10016', 'Jira custom field ID for Effort'),
-  ('jira_business_ranking_field', 'customfield_10037', 'Jira custom field ID for Business Ranking'),
-  ('jira_epic_link_field', 'customfield_10014', 'Jira custom field ID for Epic Link'),
+  ('jql_filter', 'project = "IF" ORDER BY updated DESC', 'JQL query to fetch Jira issues'),
+  ('jira_effort_field', 'customfield_11263', 'Jira custom field ID for Effort'),
+  ('jira_business_ranking_field', 'customfield_11268', 'Jira custom field ID for Business Ranking'),
+  ('jira_epic_link_field', 'customfield_11407', 'Jira custom field ID for Epic Link'),
   ('jira_sprint_field', 'customfield_10020', 'Jira custom field ID for Sprint'),
   ('default_effort_hours', '160', 'Hours when effort label is unknown'),
   ('import_culture', 'en-US', 'Intuiflow import BaseCultureInfoName'),
@@ -58,16 +58,16 @@ INSERT OR REPLACE INTO priority_rules (priority_prefix, days_offset, fixed_date,
 -- PRIORITY VALUES (Jira Priority name → second digit)
 -- ============================================================
 INSERT OR REPLACE INTO priority_values (jira_priority_name, numeric_value) VALUES
-  ('P0 - Critical', 0),
-  ('P1 - Urgent',   1),
-  ('P2 - High',     2),
-  ('P3 - Medium',   3),
-  ('P4 - Low',      4),
-  ('Highest',        1),
-  ('High',           2),
-  ('Medium',         3),
-  ('Low',            4),
-  ('Lowest',         5),
+  ('P1- Highest',     1),
+  ('P2 - High',       2),
+  ('P3 - Medium',     3),
+  ('P4 - Low',        4),
+  ('P5 - Lowest',     5),
+  ('Highest',         1),
+  ('High',            2),
+  ('Medium',          3),
+  ('Low',             4),
+  ('Lowest',          5),
   ('Select Priority', 9);
 
 -- ============================================================
@@ -137,9 +137,13 @@ INSERT OR REPLACE INTO routing_definitions (part_type_id, operation_seq, operati
 -- RELEASE DATES (from Access DB tblReleaseDates)
 -- ============================================================
 INSERT OR REPLACE INTO release_dates (version_name, status, start_date, release_date, description) VALUES
-  ('Intuiflow Release 2024.1.5', 'UNRELEASED', '2024-05-06', '2024-05-24', 'Updated .NET Framework LTS release.'),
-  ('Intuiflow Release 2024.3.1', 'UNRELEASED', '2024-04-15', '2024-05-22', '.NET Core, LTS Release'),
-  ('Intuiflow Release 2024.3.2', 'UNRELEASED', '2024-02-01', '2024-06-07', '.NET Core LTS Release, Cloud and Datacenter Edition');
+  ('Intuiflow Release 2025.4.2, Datacenter Edition', 'UNRELEASED', '2025-12-08', '2026-02-11', '2025.4 LTS-Quality Release, Datacenter Edition'),
+  ('Intuiflow Release 2025.5.2', 'UNRELEASED', '2026-01-05', '2026-02-13', 'EA Release, Cloud and Datacenter.'),
+  ('Intuiflow Release 2025.4.3', 'UNRELEASED', '2026-01-05', '2026-02-27', '2025.4 LTS-Quality Release.'),
+  ('Intuiflow Release 2025.5.3', 'UNRELEASED', '2026-01-26', '2026-03-13', 'EA Release, Cloud and Datacenter.'),
+  ('Intuiflow Release 2026.1.0', 'UNRELEASED', '2026-02-02', '2026-03-27', 'First 2026.1 LTS release.'),
+  ('Intuiflow Release 2026.1.1', 'UNRELEASED', '2026-03-02', '2026-05-01', '2026.1 LTS-Quality Release.'),
+  ('Intuiflow Release 2026.2.0', 'UNRELEASED', '2026-03-02', '2026-04-17', '2026.2 EA Release');
 
 -- ============================================================
 -- RESOURCES (from Access DB tblResource)

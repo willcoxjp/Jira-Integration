@@ -24,8 +24,10 @@ export async function runsPage(env: Env, url: URL): Promise<string> {
 
   const statusBadge = (s: string) => {
     if (s === 'ok') return '<span class="badge badge-ok">OK</span>';
+    if (s === 'dry_run') return '<span class="badge badge-ok">Dry Run</span>';
     if (s === 'error') return '<span class="badge badge-error">Error</span>';
-    return '<span class="badge badge-running">Running</span>';
+    if (s === 'running') return '<span class="badge badge-running">Running</span>';
+    return `<span class="badge badge-ok">${escHtml(s)}</span>`;
   };
 
   const body = `

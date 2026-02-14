@@ -213,16 +213,13 @@ describe('buildWorkOrderRow', () => {
     const partType = config.partTypes[0]; // Defect
     const row = buildWorkOrderRow(issue, partType, 8, 12, '2025-03-01', null, config);
 
-    expect(row.OrderNumber).toBe('IF-1234');
+    expect(row.WorkOrderNumber).toBe('IF-1234');
     expect(row.PartNumber).toBe('Defect');
     expect(row.Location).toBe('DD Tech');
-    expect(row.OrderType).toBe('WO');
-    expect(row.Quantity).toBe(8);
-    expect(row.QuantityTo).toBe(8);
-    expect(row.UnitOfMeasure).toBe('HR');
+    expect(row.WorkOrderQuantity).toBe(8);
     expect(row.RoutingName).toBe('Standard');
-    expect(row.SchedulingPriority).toBe('12');
-    expect(row.Status).toBe('Committed');
+    expect(row.Priority).toBe(12);
+    expect(row.Expedite).toBe('None');
   });
 
   it('maps user defined fields', () => {
@@ -238,8 +235,7 @@ describe('buildWorkOrderRow', () => {
     expect(row.UserDefined1).toBe('Scheduler');
     expect(row.UserDefined2).toBe('Patrick');
     expect(row.UserDefined3).toBe('Tim');
-    expect(row.UserDefined6).toBe('CMG-2024.6,urgent');
-    expect(row.Comments).toBe('Patrick');
+    expect(row.UserDefined6).toBe('CMG-2024.6;urgent');
   });
 
   it('truncates Notes to 50 chars and strips commas', () => {
@@ -253,21 +249,28 @@ describe('buildWorkOrderRow', () => {
     expect(row.Notes).not.toContain(',');
   });
 
-  it('uses release date for RequestDate and PromiseDate when available', () => {
+  it('uses release date for EndRequestDate when available', () => {
     const issue = makeIssue();
     const partType = config.partTypes[0];
     const row = buildWorkOrderRow(issue, partType, 8, 12, '2025-03-01', '2024-06-07', config);
 
-    expect(row.RequestDate).toBe('2024-06-07');
-    expect(row.PromiseDate).toBe('2024-06-07');
+    expect(row.EndRequestDate).toBe('6/7/2024');
   });
 
-  it('falls back to due date for RequestDate when no release date', () => {
+  it('falls back to due date for EndRequestDate when no release date', () => {
     const issue = makeIssue();
     const partType = config.partTypes[0];
     const row = buildWorkOrderRow(issue, partType, 8, 12, '2025-03-01', null, config);
 
-    expect(row.RequestDate).toBe('2025-03-01');
+    expect(row.EndRequestDate).toBe('3/1/2025');
+  });
+
+  it('formats OrderDate as US date', () => {
+    const issue = makeIssue({ created: '2025-01-01T10:00:00.000Z' });
+    const partType = config.partTypes[0];
+    const row = buildWorkOrderRow(issue, partType, 8, 12, '2025-03-01', null, config);
+
+    expect(row.OrderDate).toBe('1/1/2025');
   });
 });
 
@@ -285,7 +288,7 @@ describe('transformIssues', () => {
     const result = transformIssues(issues, config, syncState, today);
 
     expect(result.workOrders).toHaveLength(1);
-    expect(result.workOrders[0].OrderNumber).toBe('IF-1234');
+    expect(result.workOrders[0].WorkOrderNumber).toBe('IF-1234');
     expect(result.workOrders[0].PartNumber).toBe('Defect');
     expect(result.stats.workOrders).toBe(1);
   });
@@ -370,8 +373,7 @@ describe('transformIssues', () => {
     const syncState = new Map<string, SyncStateRow>();
     const result = transformIssues(issues, config, syncState, today);
 
-    expect(result.workOrders[0].RequestDate).toBe('2024-06-07');
-    expect(result.workOrders[0].PromiseDate).toBe('2024-06-07');
+    expect(result.workOrders[0].EndRequestDate).toBe('6/7/2024');
   });
 
   it('handles multiple issues in a batch', () => {

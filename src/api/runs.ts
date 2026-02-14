@@ -10,11 +10,13 @@ export async function handleRuns(
   env: Env,
   url: URL
 ): Promise<Response> {
-  // POST /api/runs/trigger
+  // POST /api/runs/trigger?dry_run=true&phase=wo|commands|transactions
   if (method === 'POST' && id === 'trigger') {
     try {
-      const result = await runPipeline(env, 'manual');
-      return json({ ok: true, runId: result.runId, stats: result.stats });
+      const dryRun = url.searchParams.get('dry_run') === 'true';
+      const phase = url.searchParams.get('phase') || undefined;
+      const result = await runPipeline(env, 'manual', { dryRun, phase });
+      return json({ ok: true, runId: result.runId, stats: result.stats, dryRun, phase });
     } catch (err: any) {
       return json({ ok: false, error: err?.message || String(err) }, 500);
     }

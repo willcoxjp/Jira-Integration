@@ -2,7 +2,7 @@ import type { Env, JiraIssue, PipelineConfig } from '../types';
 
 /**
  * Fetch all matching Jira issues using the v3 search/jql endpoint.
- * Pages through results until all issues are retrieved or limit is hit.
+ * Uses nextPageToken pagination (startAt is not supported on this endpoint).
  */
 export async function fetchJiraIssues(
   env: Env,
@@ -14,17 +14,19 @@ export async function fetchJiraIssues(
   if (!auth) throw new Error('Missing JIRA_BASIC_AUTH secret');
 
   const fields = buildFieldList(config);
-  let startAt = 0;
-  const pageSize = 100;
+  const pageSize = 1000;
   const results: JiraIssue[] = [];
+  let nextPageToken: string | undefined;
 
   while (results.length < limit) {
-    const body = JSON.stringify({
+    const payload: any = {
       jql: config.jqlFilter,
-      startAt,
       maxResults: Math.min(pageSize, limit - results.length),
       fields,
-    });
+    };
+    if (nextPageToken) {
+      payload.nextPageToken = nextPageToken;
+    }
 
     const res = await fetch(`${base}/rest/api/3/search/jql`, {
       method: 'POST',
@@ -33,7 +35,7 @@ export async function fetchJiraIssues(
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },
-      body,
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {
@@ -46,8 +48,10 @@ export async function fetchJiraIssues(
     results.push(...issues);
 
     if (issues.length === 0) break;
-    startAt += json.maxResults ?? pageSize;
-    if (startAt >= (json.total ?? 0)) break;
+
+    // Use nextPageToken for pagination
+    nextPageToken = json.nextPageToken;
+    if (!nextPageToken) break;
   }
 
   return results;

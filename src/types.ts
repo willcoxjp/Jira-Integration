@@ -124,36 +124,24 @@ export interface SyncStateRow {
 // Transform output
 // ============================================================
 export interface WorkOrderRow {
-  OrderNumber: string;
+  WorkOrderNumber: string;
+  OrderDate: string;
   PartNumber: string;
   Revision: string;
   Location: string;
-  OrderDate: string;
-  RequestDate: string;
-  PromiseDate: string;
-  StartDate: string;
-  OrderType: string;
-  Quantity: number;
-  QuantityTo: number;
-  Priority: string;
-  Expedite: string;
-  Status: string;
-  Vendor: string;
-  VendorIdentifier: string;
-  Comments: string;
-  Notes: string;
-  UnitOfMeasure: string;
-  UnitOfMeasureTo: string;
   RoutingName: string;
-  SchedulingPriority: string;
-  SchedulingExpedite: string;
-  GroupName: string;
-  GroupResource: string;
+  WorkOrderQuantity: number;
+  EndRequestDate: string;
+  Priority: number;
+  Expedite: string;
   SalesOrderNumber: string;
   LineItem: string;
   SalesOrderQuantity: string;
   Customer: string;
   UnitPrice: string;
+  Notes: string;
+  GroupName: string;
+  GroupResource: string;
   UserDefined1: string;
   UserDefined2: string;
   UserDefined3: string;
@@ -165,9 +153,6 @@ export interface WorkOrderRow {
   FinalBufferOverride: string;
   ReplenishmentPriorityLocation: string;
   GroupOrder: string;
-  ActualOrderDate: string;
-  BOMName: string;
-  EpicLink: string;
 }
 
 export interface CommandRow {

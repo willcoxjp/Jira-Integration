@@ -4,36 +4,24 @@ import type { WorkOrderRow, CommandRow, TransactionRow } from '../src/types';
 
 function makeWorkOrder(overrides: Partial<WorkOrderRow> = {}): WorkOrderRow {
   return {
-    OrderNumber: 'IF-1234',
+    WorkOrderNumber: 'IF-1234',
+    OrderDate: '1/1/2025',
     PartNumber: 'Defect',
     Revision: '',
     Location: 'DD Tech',
-    OrderDate: '2025-01-01',
-    RequestDate: '2025-03-01',
-    PromiseDate: '2025-03-01',
-    StartDate: '',
-    OrderType: 'WO',
-    Quantity: 8,
-    QuantityTo: 8,
-    Priority: '',
-    Expedite: '',
-    Status: 'Committed',
-    Vendor: '',
-    VendorIdentifier: '',
-    Comments: 'Patrick',
-    Notes: 'Fix the broken widget',
-    UnitOfMeasure: 'HR',
-    UnitOfMeasureTo: 'HR',
     RoutingName: 'Standard',
-    SchedulingPriority: '12',
-    SchedulingExpedite: '',
-    GroupName: '',
-    GroupResource: '',
+    WorkOrderQuantity: 8,
+    EndRequestDate: '3/1/2025',
+    Priority: 12,
+    Expedite: 'None',
     SalesOrderNumber: '',
     LineItem: '',
     SalesOrderQuantity: '',
     Customer: '',
     UnitPrice: '',
+    Notes: 'Fix the broken widget',
+    GroupName: '',
+    GroupResource: '',
     UserDefined1: 'Scheduler',
     UserDefined2: 'Patrick',
     UserDefined3: 'Tim',
@@ -45,9 +33,6 @@ function makeWorkOrder(overrides: Partial<WorkOrderRow> = {}): WorkOrderRow {
     FinalBufferOverride: '',
     ReplenishmentPriorityLocation: '',
     GroupOrder: '',
-    ActualOrderDate: '',
-    BOMName: '',
-    EpicLink: '',
     ...overrides,
   };
 }
@@ -56,14 +41,18 @@ describe('generateWorkOrdersCsv', () => {
   it('has correct header columns', () => {
     const csv = generateWorkOrdersCsv([]);
     const header = csv.split('\n')[0];
-    expect(header).toContain('OrderNumber');
+    expect(header).toContain('WorkOrderNumber');
     expect(header).toContain('PartNumber');
-    expect(header).toContain('SchedulingPriority');
+    expect(header).toContain('Priority');
     expect(header).toContain('UserDefined1');
+    expect(header).toContain('EndRequestDate');
+    expect(header).toContain('WorkOrderQuantity');
+    expect(header).not.toContain('Status');
+    expect(header).not.toContain('OrderType');
   });
 
   it('generates one data row per work order', () => {
-    const csv = generateWorkOrdersCsv([makeWorkOrder(), makeWorkOrder({ OrderNumber: 'IF-5678' })]);
+    const csv = generateWorkOrdersCsv([makeWorkOrder(), makeWorkOrder({ WorkOrderNumber: 'IF-5678' })]);
     const lines = csv.split('\n');
     expect(lines).toHaveLength(3); // header + 2 rows
   });
@@ -73,8 +62,24 @@ describe('generateWorkOrdersCsv', () => {
     const lines = csv.split('\n');
     const values = lines[1].split(',');
     const headerCols = lines[0].split(',');
-    const orderIdx = headerCols.indexOf('OrderNumber');
+    const orderIdx = headerCols.indexOf('WorkOrderNumber');
     expect(values[orderIdx]).toBe('IF-1234');
+  });
+
+  it('matches old Access DB column order', () => {
+    const csv = generateWorkOrdersCsv([]);
+    const header = csv.split('\n')[0];
+    const cols = header.split(',');
+    expect(cols[0]).toBe('WorkOrderNumber');
+    expect(cols[1]).toBe('OrderDate');
+    expect(cols[2]).toBe('PartNumber');
+    expect(cols[3]).toBe('Revision');
+    expect(cols[4]).toBe('Location');
+    expect(cols[5]).toBe('RoutingName');
+    expect(cols[6]).toBe('WorkOrderQuantity');
+    expect(cols[7]).toBe('EndRequestDate');
+    expect(cols[8]).toBe('Priority');
+    expect(cols[9]).toBe('Expedite');
   });
 });
 

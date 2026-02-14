@@ -19,6 +19,15 @@ export function formatDate(value: Date | string): string {
   return d.toISOString().split('T')[0];
 }
 
+/** Format a Date or ISO string as M/d/yyyy (US format for Intuiflow). */
+export function formatDateUS(value: Date | string): string {
+  const d = typeof value === 'string' ? new Date(value) : value;
+  const month = d.getUTCMonth() + 1;
+  const day = d.getUTCDate();
+  const year = d.getUTCFullYear();
+  return `${month}/${day}/${year}`;
+}
+
 /**
  * Calculate due date based on 2-digit scheduling priority and priority rules.
  * First digit of priority is used to look up the rule.

@@ -2,40 +2,28 @@ import { generateCsv } from '../utils/csv';
 import type { WorkOrderRow, CommandRow, TransactionRow, CsvFiles } from '../types';
 
 /**
- * Column order for Intuiflow Supply Order (Work Order) CSV import.
- * Matches the field order expected by Intuiflow's /api/v2/import.
+ * Column order for Intuiflow Work Order CSV import.
+ * Matches the field order from the old Access DB export.
  */
 export const WORK_ORDER_COLUMNS = [
-  'OrderNumber',
+  'WorkOrderNumber',
+  'OrderDate',
   'PartNumber',
   'Revision',
   'Location',
-  'OrderDate',
-  'RequestDate',
-  'PromiseDate',
-  'StartDate',
-  'OrderType',
-  'Quantity',
-  'QuantityTo',
+  'RoutingName',
+  'WorkOrderQuantity',
+  'EndRequestDate',
   'Priority',
   'Expedite',
-  'Status',
-  'Vendor',
-  'VendorIdentifier',
-  'Comments',
-  'Notes',
-  'UnitOfMeasure',
-  'UnitOfMeasureTo',
-  'RoutingName',
-  'SchedulingPriority',
-  'SchedulingExpedite',
-  'GroupName',
-  'GroupResource',
   'SalesOrderNumber',
   'LineItem',
   'SalesOrderQuantity',
   'Customer',
   'UnitPrice',
+  'Notes',
+  'GroupName',
+  'GroupResource',
   'UserDefined1',
   'UserDefined2',
   'UserDefined3',
@@ -47,8 +35,6 @@ export const WORK_ORDER_COLUMNS = [
   'FinalBufferOverride',
   'ReplenishmentPriorityLocation',
   'GroupOrder',
-  'ActualOrderDate',
-  'BOMName',
 ];
 
 /**

@@ -147,7 +147,7 @@ async function createImportSession(
     },
     body: JSON.stringify({
       Mode: 'Update',
-      Type: 'Undefined',
+      Type: 'Host',
       Option: 'None',
       BaseCultureInfoName: config.importCulture,
       FileDelimiter: config.importDelimiter,
@@ -167,7 +167,11 @@ async function createImportSession(
   }
 
   const data: any = await res.json();
-  return data.EntityID ?? data.id ?? data.ImportId;
+  const importId = data.EntityID ?? data.Id ?? data.id ?? data.ImportId ?? data.importId;
+  if (importId === undefined || importId === null) {
+    throw new Error(`Import session created but no ID found in response: ${JSON.stringify(data)}`);
+  }
+  return importId;
 }
 
 async function uploadCsvContent(
@@ -175,13 +179,13 @@ async function uploadCsvContent(
   apiKey: string,
   importId: number,
   csvContent: string,
-  contentType: string
+  _contentType: string
 ): Promise<void> {
-  // Intuiflow expects the CSV content posted directly
+  // Upload CSV content directly to the import session
   const res = await fetch(`${base}/api/v2/import/${importId}?api_key=${apiKey}`, {
     method: 'PUT',
     headers: {
-      'Content-Type': contentType,
+      'Content-Type': 'text/csv',
     },
     body: csvContent,
   });

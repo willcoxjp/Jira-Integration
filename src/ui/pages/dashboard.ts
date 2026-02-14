@@ -26,8 +26,10 @@ export async function dashboardPage(env: Env): Promise<string> {
 
   const statusBadge = (s: string) => {
     if (s === 'ok') return '<span class="badge badge-ok">OK</span>';
+    if (s === 'dry_run') return '<span class="badge badge-ok">Dry Run</span>';
     if (s === 'error') return '<span class="badge badge-error">Error</span>';
-    return '<span class="badge badge-running">Running</span>';
+    if (s === 'running') return '<span class="badge badge-running">Running</span>';
+    return `<span class="badge badge-ok">${s}</span>`;
   };
 
   const body = `
@@ -55,7 +57,10 @@ export async function dashboardPage(env: Env): Promise<string> {
 <div class="card">
   <div class="card-header">
     <h2>Pipeline</h2>
-    <button class="btn btn-primary" onclick="triggerRun()" id="runBtn">Run Now</button>
+    <button class="btn btn-outline" onclick="triggerPhase('dry_run=true','dryBtn')" id="dryBtn">1. Dry Run</button>
+    <button class="btn btn-primary" onclick="triggerPhase('phase=wo','woBtn')" id="woBtn">2. Upload WOs</button>
+    <button class="btn btn-primary" onclick="triggerPhase('phase=commands','cmdBtn')" id="cmdBtn">3. Commands</button>
+    <button class="btn btn-primary" onclick="triggerPhase('phase=transactions','txnBtn')" id="txnBtn">4. Transactions</button>
   </div>
   ${lastRun ? `
   <p style="font-size:13px;color:#64748b">
@@ -91,16 +96,20 @@ export async function dashboardPage(env: Env): Promise<string> {
 </div>
 
 <script>
-async function triggerRun(){
-  const btn=document.getElementById('runBtn');
+async function triggerPhase(qs,btnId){
+  const btn=document.getElementById(btnId);
+  const origText=btn.textContent;
   btn.disabled=true;btn.textContent='Running...';
   try{
-    const r=await apiPost('runs/trigger',{});
-    showToast('Run #'+r.runId+' complete: '+r.stats.workOrders+' orders');
-    setTimeout(()=>location.reload(),1000);
+    const res=await fetch('/api/runs/trigger?'+qs,{method:'POST',headers:{'Content-Type':'application/json'}});
+    const r=await res.json();
+    if(!r.ok)throw new Error(r.error);
+    const s=r.stats;
+    showToast('Run #'+r.runId+': '+s.workOrders+' WO, '+s.commands+' cmd, '+s.transactions+' txn');
+    setTimeout(()=>location.reload(),1500);
   }catch(e){
     showToast(e.message,'error');
-  }finally{btn.disabled=false;btn.textContent='Run Now'}
+  }finally{btn.disabled=false;btn.textContent=origText}
 }
 </script>`;
 
