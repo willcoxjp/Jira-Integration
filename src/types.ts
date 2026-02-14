@@ -4,7 +4,7 @@
 export interface Env {
   DB: D1Database;
   JIRA_BASIC_AUTH?: string;
-  INTUIFLOW_BEARER?: string;
+  INTUIFLOW_API_KEY?: string;
 }
 
 // ============================================================

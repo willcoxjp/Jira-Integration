@@ -12,7 +12,7 @@ INSERT OR REPLACE INTO settings (key, value, description) VALUES
   ('sentinel_quantity', '4.567', 'Default quantity when no estimate exists'),
   ('sentinel_close_date', '2045-12-31', 'Sentinel date for closed orders'),
   ('priority_cutoff', '30', 'Only upload orders with scheduling priority < this value'),
-  ('jql_filter', 'project = IF AND statusCategory != Done ORDER BY updated DESC', 'JQL query to fetch Jira issues'),
+  ('jql_filter', 'project = "IF" AND statusCategory != Done ORDER BY updated DESC', 'JQL query to fetch Jira issues'),
   ('jira_effort_field', 'customfield_10016', 'Jira custom field ID for Effort'),
   ('jira_business_ranking_field', 'customfield_10037', 'Jira custom field ID for Business Ranking'),
   ('jira_epic_link_field', 'customfield_10014', 'Jira custom field ID for Epic Link'),
@@ -156,4 +156,4 @@ INSERT OR REPLACE INTO resources (resource_name, location, resource_type, capaci
 -- ============================================================
 INSERT OR REPLACE INTO connectors (name, kind, base_url, auth_type, secret_ref, config_json) VALUES
   ('Jira Cloud',  'jira',      'https://demanddriven.atlassian.net', 'basic',  'JIRA_BASIC_AUTH', '{}'),
-  ('Intuiflow',   'intuiflow', 'https://YOUR_INTUIFLOW_URL',         'bearer', 'INTUIFLOW_BEARER', '{}');
+  ('Intuiflow',   'intuiflow', 'https://product.demanddriventech.com', 'api_key', 'INTUIFLOW_API_KEY', '{}');

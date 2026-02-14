@@ -21,11 +21,11 @@ export async function uploadToIntuiflow(
   config: PipelineConfig
 ): Promise<UploadResult> {
   const base = await getIntuiflowBaseUrl(env);
-  const bearer = env.INTUIFLOW_BEARER;
-  if (!bearer) throw new Error('Missing INTUIFLOW_BEARER secret');
+  const apiKey = env.INTUIFLOW_API_KEY;
+  if (!apiKey) throw new Error('Missing INTUIFLOW_API_KEY secret');
 
   // Step 1: Create import session
-  const importId = await createImportSession(base, bearer, config);
+  const importId = await createImportSession(base, apiKey, config);
 
   const result: UploadResult = {
     importId,
@@ -36,12 +36,12 @@ export async function uploadToIntuiflow(
 
   // Step 2: Upload work orders CSV (supply orders)
   if (csvFiles.workOrdersCsv && csvFiles.workOrdersCsv.split('\n').length > 1) {
-    await uploadCsvContent(base, bearer, importId, csvFiles.workOrdersCsv, 'text/csv');
+    await uploadCsvContent(base, apiKey, importId, csvFiles.workOrdersCsv, 'text/csv');
     result.workOrdersUploaded = true;
   }
 
   // Step 3: Execute import
-  await executeImport(base, bearer, importId, config);
+  await executeImport(base, apiKey, importId, config);
 
   // For command releases and transactions, use the transaction APIs directly
   // These don't go through the CSV import flow
@@ -59,11 +59,12 @@ export async function executeCommands(
   commands: Array<{ orderNumber: string; partNumber: string; location: string; command: string }>
 ): Promise<void> {
   const base = await getIntuiflowBaseUrl(env);
-  const bearer = env.INTUIFLOW_BEARER;
-  if (!bearer) throw new Error('Missing INTUIFLOW_BEARER secret');
+  const apiKey = env.INTUIFLOW_API_KEY;
+  if (!apiKey) throw new Error('Missing INTUIFLOW_API_KEY secret');
 
   for (const cmd of commands) {
     const url = new URL(`${base}/api/v2/scheduling/orders/${cmd.command}`);
+    url.searchParams.set('api_key', apiKey);
     url.searchParams.set('location', cmd.location);
     url.searchParams.set('orderNumber', cmd.orderNumber);
     url.searchParams.set('partNumber', cmd.partNumber);
@@ -71,7 +72,6 @@ export async function executeCommands(
     const res = await fetch(url.toString(), {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${bearer}`,
         'Content-Type': 'application/json',
       },
     });
@@ -99,13 +99,14 @@ export async function postTransactions(
   }>
 ): Promise<void> {
   const base = await getIntuiflowBaseUrl(env);
-  const bearer = env.INTUIFLOW_BEARER;
-  if (!bearer) throw new Error('Missing INTUIFLOW_BEARER secret');
+  const apiKey = env.INTUIFLOW_API_KEY;
+  if (!apiKey) throw new Error('Missing INTUIFLOW_API_KEY secret');
 
   for (const txn of transactions) {
     const url = new URL(
       `${base}/api/v2/scheduling/orders/transactions/${txn.operationSeq}/receive`
     );
+    url.searchParams.set('api_key', apiKey);
     url.searchParams.set('orderNumber', txn.orderNumber);
     url.searchParams.set('partNumber', txn.partNumber);
     url.searchParams.set('location', txn.location);
@@ -113,7 +114,6 @@ export async function postTransactions(
     const res = await fetch(url.toString(), {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${bearer}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -137,13 +137,12 @@ export async function postTransactions(
 
 async function createImportSession(
   base: string,
-  bearer: string,
+  apiKey: string,
   config: PipelineConfig
 ): Promise<number> {
-  const res = await fetch(`${base}/api/v2/import`, {
+  const res = await fetch(`${base}/api/v2/import?api_key=${apiKey}`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${bearer}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -173,16 +172,15 @@ async function createImportSession(
 
 async function uploadCsvContent(
   base: string,
-  bearer: string,
+  apiKey: string,
   importId: number,
   csvContent: string,
   contentType: string
 ): Promise<void> {
   // Intuiflow expects the CSV content posted directly
-  const res = await fetch(`${base}/api/v2/import/${importId}`, {
+  const res = await fetch(`${base}/api/v2/import/${importId}?api_key=${apiKey}`, {
     method: 'PUT',
     headers: {
-      Authorization: `Bearer ${bearer}`,
       'Content-Type': contentType,
     },
     body: csvContent,
@@ -196,14 +194,13 @@ async function uploadCsvContent(
 
 async function executeImport(
   base: string,
-  bearer: string,
+  apiKey: string,
   importId: number,
   config: PipelineConfig
 ): Promise<void> {
-  const res = await fetch(`${base}/api/v2/import/${importId}`, {
+  const res = await fetch(`${base}/api/v2/import/${importId}?api_key=${apiKey}`, {
     method: 'PUT',
     headers: {
-      Authorization: `Bearer ${bearer}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
