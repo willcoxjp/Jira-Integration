@@ -10,10 +10,10 @@ export interface UploadResult {
 /**
  * Upload CSV files to Intuiflow via the /api/v2/import API.
  *
- * Flow:
- *   1. POST /api/v2/import  → create import session
- *   2. Upload CSV file(s) to the import session
- *   3. PUT /api/v2/import/{id} → execute the import
+ * Flow (from Access DB VBA — mdlPOST_Request, mdlPOST_WorkOrder_CSV, mdlPOST_FinalRequest):
+ *   1. POST /api/v2/import                        → create import session (returns Id)
+ *   2. POST /api/v2/import/{id}/item?type=WorkOrder → upload CSV (text/csv body)
+ *   3. POST /api/v2/import/{id}/run                → execute the import
  */
 export async function uploadToIntuiflow(
   env: Env,
@@ -34,18 +34,14 @@ export async function uploadToIntuiflow(
     transactionsUploaded: false,
   };
 
-  // Step 2: Upload work orders CSV (supply orders)
+  // Step 2: Upload work orders CSV
   if (csvFiles.workOrdersCsv && csvFiles.workOrdersCsv.split('\n').length > 1) {
-    await uploadCsvContent(base, apiKey, importId, csvFiles.workOrdersCsv, 'text/csv');
+    await uploadCsvItem(base, apiKey, importId, csvFiles.workOrdersCsv, 'WorkOrder');
     result.workOrdersUploaded = true;
   }
 
   // Step 3: Execute import
-  await executeImport(base, apiKey, importId, config);
-
-  // For command releases and transactions, use the transaction APIs directly
-  // These don't go through the CSV import flow
-  // (handled separately via the scheduling/orders API)
+  await executeImportRun(base, apiKey, importId);
 
   return result;
 }
@@ -53,6 +49,10 @@ export async function uploadToIntuiflow(
 /**
  * Execute command releases via the Intuiflow scheduling orders API.
  * Commands like Release, Close, Hold, etc.
+ *
+ * From VBA: POST /api/v2/scheduling/orders/{transaction}
+ * where transaction is one of: Lock, Unlock, Release, Unrelease, PartialUnrelease,
+ * Hold, Unhold, Close, Reopen
  */
 export async function executeCommands(
   env: Env,
@@ -135,10 +135,17 @@ export async function postTransactions(
 
 // --- Internal helpers ---
 
+/**
+ * Step 1: Create import session.
+ * VBA: mdlPOST_Request.SendPOSTRequest
+ *   POST /api/v2/import?api_key=KEY
+ *   Body: { Mode: "ReplaceByLocation", Type: "Host", Option: "None", IgnoreSourceERP: "True" }
+ *   Response field: "Id"
+ */
 async function createImportSession(
   base: string,
   apiKey: string,
-  config: PipelineConfig
+  _config: PipelineConfig
 ): Promise<number> {
   const res = await fetch(`${base}/api/v2/import?api_key=${apiKey}`, {
     method: 'POST',
@@ -146,18 +153,10 @@ async function createImportSession(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      Mode: 'Update',
+      Mode: 'ReplaceByLocation',
       Type: 'Host',
       Option: 'None',
-      BaseCultureInfoName: config.importCulture,
-      FileDelimiter: config.importDelimiter,
-      RunRateUnits: 'UnitsPerHour',
-      BufferUnits: 'Minutes',
-      SetupTimeUnits: 'Minutes',
-      FixedOffsetUnits: 'Minutes',
-      FamilyFieldLocation: 'RoutingsFile',
-      IsLocationRecordInferred: false,
-      IgnoreSourceERP: false,
+      IgnoreSourceERP: true,
     }),
   });
 
@@ -167,56 +166,64 @@ async function createImportSession(
   }
 
   const data: any = await res.json();
-  const importId = data.EntityID ?? data.Id ?? data.id ?? data.ImportId ?? data.importId;
+  const importId = data.Id ?? data.EntityID ?? data.id ?? data.ImportId;
   if (importId === undefined || importId === null) {
     throw new Error(`Import session created but no ID found in response: ${JSON.stringify(data)}`);
   }
   return importId;
 }
 
-async function uploadCsvContent(
+/**
+ * Step 2: Upload CSV data to the import session.
+ * VBA: mdlPOST_WorkOrder_CSV.ExportWorkOrderDataToCSV
+ *   POST /api/v2/import/{id}/item?type=WorkOrder&api_key=KEY
+ *   Content-Type: text/csv
+ *   Body: raw CSV string
+ */
+async function uploadCsvItem(
   base: string,
   apiKey: string,
   importId: number,
   csvContent: string,
-  _contentType: string
+  itemType: string
 ): Promise<void> {
-  // Upload CSV content directly to the import session
-  const res = await fetch(`${base}/api/v2/import/${importId}?api_key=${apiKey}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'text/csv',
-    },
-    body: csvContent,
-  });
+  const res = await fetch(
+    `${base}/api/v2/import/${importId}/item?type=${itemType}&api_key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/csv',
+      },
+      body: csvContent,
+    }
+  );
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`CSV upload failed for import ${importId}: ${res.status} :: ${text}`);
+    throw new Error(`CSV upload failed for import ${importId} (${itemType}): ${res.status} :: ${text}`);
   }
 }
 
-async function executeImport(
+/**
+ * Step 3: Execute the import.
+ * VBA: mdlPOST_FinalRequest.SendFinalPOSTRequest
+ *   POST /api/v2/import/{id}/run?api_key=KEY
+ */
+async function executeImportRun(
   base: string,
   apiKey: string,
-  importId: number,
-  config: PipelineConfig
+  importId: number
 ): Promise<void> {
-  const res = await fetch(`${base}/api/v2/import/${importId}?api_key=${apiKey}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      Mode: 'Update',
-      BaseCultureInfoName: config.importCulture,
-      FileDelimiter: config.importDelimiter,
-    }),
-  });
+  const res = await fetch(
+    `${base}/api/v2/import/${importId}/run?api_key=${apiKey}`,
+    {
+      method: 'POST',
+    }
+  );
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Import execution failed for ${importId}: ${res.status} :: ${text}`);
+    throw new Error(`Import run failed for ${importId}: ${res.status} :: ${text}`);
   }
 }
 
