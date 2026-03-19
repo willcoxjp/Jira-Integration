@@ -38,6 +38,8 @@ export async function fetchJiraIssues(
       body: JSON.stringify(payload),
     });
 
+    console.log(`[jira-fetch] POST ${base}/rest/api/3/search/jql → ${res.status} ${res.statusText}`);
+
     if (!res.ok) {
       const text = await res.text();
       throw new Error(`Jira search failed: ${res.status} ${res.statusText} :: ${text}`);
@@ -45,6 +47,10 @@ export async function fetchJiraIssues(
 
     const json: any = await res.json();
     const issues = json.issues || [];
+    console.log(`[jira-fetch] Page returned ${issues.length} issues (total so far: ${results.length + issues.length}). nextPageToken: ${json.nextPageToken ? 'yes' : 'no'}`);
+    if (issues.length === 0) {
+      console.log(`[jira-fetch] Empty page response keys: ${Object.keys(json).join(', ')}`);
+    }
     results.push(...issues);
 
     if (issues.length === 0) break;

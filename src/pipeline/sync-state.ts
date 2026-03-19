@@ -25,6 +25,7 @@ export async function loadSyncState(env: Env): Promise<Map<string, SyncStateRow>
 
 /**
  * Update sync state after a successful pipeline run.
+ * Uses D1 batch API to avoid hitting the subrequest limit.
  */
 export async function updateSyncState(
   env: Env,
@@ -32,36 +33,41 @@ export async function updateSyncState(
 ): Promise<void> {
   const now = new Date().toISOString();
 
-  // Upsert each work order into sync state
-  for (const wo of result.workOrders) {
-    const wasReleased = result.releasedKeys.includes(wo.OrderNumber) ? 1 : 0;
-    const wasClosed = result.closedKeys.includes(wo.OrderNumber) ? 1 : 0;
+  const upsertSql = `INSERT INTO order_sync_state
+    (jira_key, jira_issue_type, last_jira_status, last_jira_updated, was_released, was_closed, last_quantity, last_priority, last_synced_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(jira_key) DO UPDATE SET
+      last_jira_status = excluded.last_jira_status,
+      last_jira_updated = excluded.last_jira_updated,
+      was_released = CASE WHEN excluded.was_released = 1 THEN 1 ELSE order_sync_state.was_released END,
+      was_closed = CASE WHEN excluded.was_closed = 1 THEN 1 ELSE order_sync_state.was_closed END,
+      last_quantity = excluded.last_quantity,
+      last_priority = excluded.last_priority,
+      last_synced_at = excluded.last_synced_at`;
 
-    await env.DB
-      .prepare(
-        `INSERT INTO order_sync_state
-         (jira_key, jira_issue_type, last_jira_status, last_jira_updated, was_released, was_closed, last_quantity, last_priority, last_synced_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(jira_key) DO UPDATE SET
-           last_jira_status = excluded.last_jira_status,
-           last_jira_updated = excluded.last_jira_updated,
-           was_released = CASE WHEN excluded.was_released = 1 THEN 1 ELSE order_sync_state.was_released END,
-           was_closed = CASE WHEN excluded.was_closed = 1 THEN 1 ELSE order_sync_state.was_closed END,
-           last_quantity = excluded.last_quantity,
-           last_priority = excluded.last_priority,
-           last_synced_at = excluded.last_synced_at`
-      )
+  const statements = result.workOrders.map(wo => {
+    const jiraKey = wo.WorkOrderNumber;
+    const wasReleased = result.releasedKeys.includes(jiraKey) ? 1 : 0;
+    const wasClosed = result.closedKeys.includes(jiraKey) ? 1 : 0;
+    const jiraStatus = result.issueStatuses.get(jiraKey) ?? '';
+
+    return env.DB
+      .prepare(upsertSql)
       .bind(
-        wo.OrderNumber,
+        jiraKey,
         wo.PartNumber,
-        wo.Status,
+        jiraStatus,
         now,
         wasReleased,
         wasClosed,
-        wo.Quantity,
-        Number(wo.SchedulingPriority),
+        wo.WorkOrderQuantity,
+        wo.Priority,
         now
-      )
-      .run();
+      );
+  });
+
+  // D1 batch executes all statements in a single transaction (single subrequest)
+  if (statements.length > 0) {
+    await env.DB.batch(statements);
   }
 }

@@ -2,7 +2,7 @@ import type { Env, PipelineConfig, RunStats, TransformResult, CsvFiles } from '.
 import { fetchJiraIssues } from './fetch-jira';
 import { transformIssues } from './transform';
 import { generateAllCsvFiles } from './csv-generator';
-import { uploadToIntuiflow, executeCommands, postTransactions } from './upload-intuiflow';
+import { uploadToIntuiflow, uploadCommands, uploadTransactions } from './upload-intuiflow';
 import { loadSyncState, updateSyncState } from './sync-state';
 import { loadPipelineConfig } from './config-loader';
 
@@ -59,7 +59,9 @@ export async function runPipeline(
     }
 
     // 3. Fetch from Jira
+    console.log(`[pipeline] Fetching from Jira with JQL: ${config.jqlFilter}`);
     const issues = await fetchJiraIssues(env, config);
+    console.log(`[pipeline] Fetched ${issues.length} issues from Jira`);
 
     // 4. Load sync state
     const syncState = await loadSyncState(env);
@@ -77,41 +79,29 @@ export async function runPipeline(
     // 7. Store CSVs (always — so we can review before uploading)
     await storeCsvs(env, runId, csvFiles, result);
 
+    // Store sync state snapshot (for phase=sync to replay later)
+    const syncSnapshot = result.workOrders.map(wo => ({
+      key: wo.WorkOrderNumber,
+      partNumber: wo.PartNumber,
+      status: result.issueStatuses.get(wo.WorkOrderNumber) ?? '',
+      released: result.releasedKeys.includes(wo.WorkOrderNumber) ? 1 : 0,
+      closed: result.closedKeys.includes(wo.WorkOrderNumber) ? 1 : 0,
+      quantity: wo.WorkOrderQuantity,
+      priority: wo.Priority,
+    }));
+    await env.DB
+      .prepare("INSERT INTO run_csvs (run_id, csv_type, csv_content, row_count) VALUES (?, 'sync_snapshot', ?, ?)")
+      .bind(runId, JSON.stringify(syncSnapshot), syncSnapshot.length)
+      .run();
+
     if (dryRun) {
       // Dry run: stop here, don't touch Intuiflow
       await completeRun(env, runId, result.stats, 'dry_run');
       return { runId, stats: result.stats };
     }
 
-    // Full execution — upload everything
-    if (result.workOrders.length > 0) {
-      await uploadToIntuiflow(env, csvFiles, config);
-    }
-
-    if (result.commands.length > 0) {
-      await executeCommands(
-        env,
-        result.commands.map(c => ({
-          orderNumber: c.OrderNumber,
-          partNumber: c.PartNumber,
-          location: c.Location,
-          command: c.Command,
-        }))
-      );
-    }
-
-    if (result.transactions.length > 0) {
-      await postTransactions(
-        env,
-        result.transactions.map(t => ({
-          orderNumber: t.OrderNumber,
-          partNumber: t.PartNumber,
-          location: t.Location,
-          operationSeq: t.OperationSequenceNumber,
-          quantity: t.Quantity,
-        }))
-      );
-    }
+    // Full execution — upload all CSVs via import API (batch)
+    await uploadToIntuiflow(env, csvFiles, config);
 
     // Update sync state
     await updateSyncState(env, result);
@@ -190,8 +180,44 @@ async function runPhase(
     return { runId, stats };
   }
 
+  if (phase === 'sync') {
+    // Populate sync state from the dry run's stored snapshot — no external calls
+    const snapRow = await env.DB
+      .prepare("SELECT csv_content, row_count FROM run_csvs WHERE run_id = ? AND csv_type = 'sync_snapshot'")
+      .bind(sourceRunId)
+      .first<{ csv_content: string; row_count: number }>();
+
+    if (!snapRow) {
+      throw new Error(`No sync snapshot found in dry run #${sourceRunId}. Run a new dry run first.`);
+    }
+
+    const snapshot: Array<{ key: string; partNumber: string; status: string; released: number; closed: number; quantity: number; priority: number }> = JSON.parse(snapRow.csv_content);
+    const now = new Date().toISOString();
+
+    const upsertSql = `INSERT INTO order_sync_state
+      (jira_key, jira_issue_type, last_jira_status, last_jira_updated, was_released, was_closed, last_quantity, last_priority, last_synced_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(jira_key) DO UPDATE SET
+        last_jira_status = excluded.last_jira_status,
+        last_jira_updated = excluded.last_jira_updated,
+        was_released = CASE WHEN excluded.was_released = 1 THEN 1 ELSE order_sync_state.was_released END,
+        was_closed = CASE WHEN excluded.was_closed = 1 THEN 1 ELSE order_sync_state.was_closed END,
+        last_quantity = excluded.last_quantity,
+        last_priority = excluded.last_priority,
+        last_synced_at = excluded.last_synced_at`;
+
+    const statements = snapshot.map(s =>
+      env.DB.prepare(upsertSql).bind(s.key, s.partNumber, s.status, now, s.released, s.closed, s.quantity, s.priority, now)
+    );
+
+    await env.DB.batch(statements);
+    stats.workOrders = snapshot.length;
+
+    await completeRun(env, runId, stats, 'ok');
+    return { runId, stats };
+  }
+
   if (phase === 'commands') {
-    // Load commands CSV from the dry run and parse it back
     const csvRow = await env.DB
       .prepare("SELECT csv_content, row_count FROM run_csvs WHERE run_id = ? AND csv_type = 'commands'")
       .bind(sourceRunId)
@@ -201,9 +227,9 @@ async function runPhase(
       throw new Error(`No commands CSV found in dry run #${sourceRunId}.`);
     }
 
-    const commands = parseCsvToCommands(csvRow.csv_content);
-    await executeCommands(env, commands);
-    stats.commands = commands.length;
+    // Upload entire commands CSV as a batch via import API
+    await uploadCommands(env, csvRow.csv_content, config);
+    stats.commands = csvRow.row_count;
 
     await completeRun(env, runId, stats, 'ok');
     return { runId, stats };
@@ -219,9 +245,9 @@ async function runPhase(
       throw new Error(`No transactions CSV found in dry run #${sourceRunId}. (This is normal for the first run — transactions only appear after sync state is populated.)`);
     }
 
-    const transactions = parseCsvToTransactions(csvRow.csv_content);
-    await postTransactions(env, transactions);
-    stats.transactions = transactions.length;
+    // Upload entire transactions CSV as a batch via import API
+    await uploadTransactions(env, csvRow.csv_content, config);
+    stats.transactions = csvRow.row_count;
 
     await completeRun(env, runId, stats, 'ok');
     return { runId, stats };
@@ -261,69 +287,3 @@ async function storeCsvs(
   }
 }
 
-/**
- * Parse a commands CSV back into command objects.
- * CSV format: OrderNumber,PartNumber,Location,Command,OperationSequenceNumber
- */
-function parseCsvToCommands(csv: string): Array<{ orderNumber: string; partNumber: string; location: string; command: string }> {
-  const lines = csv.split('\n').filter(l => l.trim());
-  // Skip header row
-  return lines.slice(1).map(line => {
-    const cols = parseCsvLine(line);
-    return {
-      orderNumber: cols[0],
-      partNumber: cols[1],
-      location: cols[2],
-      command: cols[3],
-    };
-  });
-}
-
-/**
- * Parse a transactions CSV back into transaction objects.
- * CSV format: OrderNumber,PartNumber,Location,OperationSequenceNumber,EntryDate,EntryType,Quantity,IsLastBatch,BackfillPrevious,Notes
- */
-function parseCsvToTransactions(csv: string): Array<{ orderNumber: string; partNumber: string; location: string; operationSeq: number; quantity: number }> {
-  const lines = csv.split('\n').filter(l => l.trim());
-  return lines.slice(1).map(line => {
-    const cols = parseCsvLine(line);
-    return {
-      orderNumber: cols[0],
-      partNumber: cols[1],
-      location: cols[2],
-      operationSeq: parseInt(cols[3], 10),
-      quantity: parseFloat(cols[6]),
-    };
-  });
-}
-
-/** Simple CSV line parser that handles quoted fields */
-function parseCsvLine(line: string): string[] {
-  const result: string[] = [];
-  let current = '';
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (inQuotes) {
-      if (ch === '"' && line[i + 1] === '"') {
-        current += '"';
-        i++;
-      } else if (ch === '"') {
-        inQuotes = false;
-      } else {
-        current += ch;
-      }
-    } else {
-      if (ch === '"') {
-        inQuotes = true;
-      } else if (ch === ',') {
-        result.push(current);
-        current = '';
-      } else {
-        current += ch;
-      }
-    }
-  }
-  result.push(current);
-  return result;
-}

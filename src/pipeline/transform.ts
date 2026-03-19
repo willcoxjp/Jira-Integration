@@ -154,6 +154,7 @@ export function transformIssues(
   const workOrders: WorkOrderRow[] = [];
   const commands: CommandRow[] = [];
   const transactions: TransactionRow[] = [];
+  const issueStatuses = new Map<string, string>();
   const closedKeys: string[] = [];
   const releasedKeys: string[] = [];
   const stats: RunStats = {
@@ -203,6 +204,7 @@ export function transformIssues(
     // F. Build work order
     const wo = buildWorkOrderRow(issue, partType, quantity, priority, dueDate, releaseDate, config);
     workOrders.push(wo);
+    issueStatuses.set(issue.key, issue.fields.status.name);
     stats.workOrders++;
 
     // G. Check existing sync state
@@ -259,5 +261,5 @@ export function transformIssues(
     }
   }
 
-  return { workOrders, commands, transactions, closedKeys, releasedKeys, stats };
+  return { workOrders, commands, transactions, closedKeys, releasedKeys, issueStatuses, stats };
 }

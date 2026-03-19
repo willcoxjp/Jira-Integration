@@ -61,6 +61,7 @@ export async function dashboardPage(env: Env): Promise<string> {
     <button class="btn btn-primary" onclick="triggerPhase('phase=wo','woBtn')" id="woBtn">2. Upload WOs</button>
     <button class="btn btn-primary" onclick="triggerPhase('phase=commands','cmdBtn')" id="cmdBtn">3. Commands</button>
     <button class="btn btn-primary" onclick="triggerPhase('phase=transactions','txnBtn')" id="txnBtn">4. Transactions</button>
+    <button class="btn btn-outline" onclick="triggerPhase('phase=sync','syncBtn')" id="syncBtn">5. Sync State</button>
   </div>
   ${lastRun ? `
   <p style="font-size:13px;color:#64748b">

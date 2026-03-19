@@ -201,5 +201,7 @@ export interface TransformResult {
   transactions: TransactionRow[];
   closedKeys: string[];
   releasedKeys: string[];
+  /** Jira key → current Jira status name (for sync state tracking) */
+  issueStatuses: Map<string, string>;
   stats: RunStats;
 }
