@@ -59,9 +59,7 @@ export async function runPipeline(
     }
 
     // 3. Fetch from Jira
-    console.log(`[pipeline] Fetching from Jira with JQL: ${config.jqlFilter}`);
     const issues = await fetchJiraIssues(env, config);
-    console.log(`[pipeline] Fetched ${issues.length} issues from Jira`);
 
     // 4. Load sync state
     const syncState = await loadSyncState(env);
@@ -146,15 +144,6 @@ async function runPhase(
 
   const sourceRunId = lastDryRun.id;
   const stats: RunStats = { fetched: 0, excluded: 0, workOrders: 0, commands: 0, transactions: 0, closed: 0, errors: 0 };
-
-  // Load the stored stats from the dry run
-  const dryRunRow = await env.DB
-    .prepare("SELECT stats_json FROM runs WHERE id = ?")
-    .bind(sourceRunId)
-    .first<{ stats_json: string }>();
-  if (dryRunRow?.stats_json) {
-    try { Object.assign(stats, JSON.parse(dryRunRow.stats_json)); } catch {}
-  }
 
   if (phase === 'wo') {
     // Load work orders CSV from the dry run
