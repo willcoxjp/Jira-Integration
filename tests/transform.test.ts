@@ -390,4 +390,38 @@ describe('transformIssues', () => {
     expect(result.stats.excluded).toBe(1);
     expect(result.stats.workOrders).toBe(2);
   });
+
+  it('populates issueStatuses map for included issues', () => {
+    const issues = [
+      makeIssue({ customfield_10037: 1, status: { name: 'In Development', statusCategory: { key: 'indeterminate', name: 'In Progress' } } }, 'IF-100'),
+      makeIssue({ issuetype: { name: 'Feature' }, customfield_10037: 2, status: { name: 'QA Ready', statusCategory: { key: 'indeterminate', name: 'In Progress' } } }, 'IF-200'),
+    ];
+    const syncState = new Map<string, SyncStateRow>();
+    const result = transformIssues(issues, config, syncState, today);
+
+    expect(result.issueStatuses).toBeInstanceOf(Map);
+    expect(result.issueStatuses.get('IF-100')).toBe('In Development');
+    expect(result.issueStatuses.get('IF-200')).toBe('QA Ready');
+  });
+
+  it('does not include excluded issues in issueStatuses', () => {
+    const issues = [
+      makeIssue({ issuetype: { name: 'Epic' } }, 'IF-300'), // excluded type
+    ];
+    const syncState = new Map<string, SyncStateRow>();
+    const result = transformIssues(issues, config, syncState, today);
+
+    expect(result.issueStatuses.has('IF-300')).toBe(false);
+  });
+
+  it('does not include priority-excluded issues in issueStatuses', () => {
+    // Business ranking null (9) + P4-Low (4) = 94, >= cutoff 30
+    const issues = [
+      makeIssue({ priority: { name: 'P4 - Low' } }, 'IF-400'),
+    ];
+    const syncState = new Map<string, SyncStateRow>();
+    const result = transformIssues(issues, config, syncState, today);
+
+    expect(result.issueStatuses.has('IF-400')).toBe(false);
+  });
 });
