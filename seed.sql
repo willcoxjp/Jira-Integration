@@ -5,6 +5,7 @@
 -- SETTINGS
 -- ============================================================
 INSERT OR REPLACE INTO settings (key, value, description) VALUES
+  ('cron_enabled', 'true', 'Enable/disable the scheduled cron pipeline (toggle from dashboard)'),
   ('location', 'DD Tech', 'Intuiflow location name'),
   ('order_type', 'WO', 'Intuiflow order type'),
   ('unit_of_measure', 'HR', 'Unit of measure for work orders'),

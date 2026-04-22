@@ -3,8 +3,14 @@
 // ============================================================
 export interface Env {
   DB: D1Database;
+  PIPELINE_QUEUE: Queue<PipelineQueueMessage>;
   JIRA_BASIC_AUTH?: string;
   INTUIFLOW_API_KEY?: string;
+}
+
+export interface PipelineQueueMessage {
+  phase: string;
+  sourceRunId: number;
 }
 
 // ============================================================

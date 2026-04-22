@@ -1,4 +1,4 @@
-import type { Env } from './types';
+import type { Env, PipelineQueueMessage } from './types';
 import { apiRouter } from './api/router';
 import { runPipeline } from './pipeline/runner';
 import { dashboardPage } from './ui/pages/dashboard';
@@ -71,10 +71,41 @@ export default {
   },
 
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(
-      runPipeline(env, 'cron').catch((err) => {
-        console.error('Scheduled pipeline error:', err);
-      })
-    );
+    ctx.waitUntil((async () => {
+      // Respect the cron_enabled toggle from the dashboard
+      const setting = await env.DB
+        .prepare("SELECT value FROM settings WHERE key='cron_enabled'")
+        .first<{ value: string }>();
+      if (setting?.value === 'false') {
+        console.log('Cron disabled via settings — skipping run.');
+        return;
+      }
+
+      // Run dry run only (Jira fetch + transform + store CSVs).
+      // Upload phases are chained via queue so each gets a fresh subrequest budget.
+      const { runId } = await runPipeline(env, 'cron', { dryRun: true });
+      await env.PIPELINE_QUEUE.send({ phase: 'wo', sourceRunId: runId });
+    })().catch((err) => {
+      console.error('Scheduled pipeline error:', err);
+    }));
+  },
+
+  async queue(batch: MessageBatch<PipelineQueueMessage>, env: Env): Promise<void> {
+    for (const message of batch.messages) {
+      const { phase, sourceRunId } = message.body;
+      try {
+        await runPipeline(env, 'cron', { phase, sourceRunId });
+        const next = PHASE_SEQUENCE[PHASE_SEQUENCE.indexOf(phase) + 1];
+        if (next) {
+          await env.PIPELINE_QUEUE.send({ phase: next, sourceRunId });
+        }
+        message.ack();
+      } catch (err) {
+        console.error(`Queue phase ${phase} failed:`, err);
+        message.retry();
+      }
+    }
   },
 };
+
+const PHASE_SEQUENCE = ['wo', 'reschedule', 'commands', 'transactions', 'sync'];

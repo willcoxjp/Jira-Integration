@@ -203,6 +203,28 @@ async function executeImportRun(
   }
 }
 
+/**
+ * Trigger the Intuiflow scheduler for the configured location.
+ * Calls POST /api/v2/job/scheduling — equivalent to clicking the Reschedule button.
+ * Must be called after work orders are uploaded and before commands are sent (IF-8510).
+ */
+export async function runScheduler(env: Env, config: PipelineConfig): Promise<void> {
+  const base = await getIntuiflowBaseUrl(env);
+  const apiKey = env.INTUIFLOW_API_KEY;
+  if (!apiKey) throw new Error('Missing INTUIFLOW_API_KEY secret');
+
+  const res = await fetch(`${base}/api/v2/job/scheduling?api_key=${apiKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ locationId: config.location }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Scheduler call failed: ${res.status} :: ${text}`);
+  }
+}
+
 async function getIntuiflowBaseUrl(env: Env): Promise<string> {
   const row = await env.DB
     .prepare("SELECT base_url FROM connectors WHERE kind='intuiflow' AND is_enabled=1 LIMIT 1")

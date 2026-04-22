@@ -2,7 +2,7 @@ import type { Env, PipelineConfig, RunStats, TransformResult, CsvFiles } from '.
 import { fetchJiraIssues } from './fetch-jira';
 import { transformIssues } from './transform';
 import { generateAllCsvFiles } from './csv-generator';
-import { uploadToIntuiflow, uploadCommands, uploadTransactions } from './upload-intuiflow';
+import { uploadToIntuiflow, uploadCommands, uploadTransactions, runScheduler } from './upload-intuiflow';
 import { loadSyncState, updateSyncState } from './sync-state';
 import { loadPipelineConfig } from './config-loader';
 
@@ -14,8 +14,10 @@ export interface RunResult {
 export interface RunOptions {
   /** Skip all Intuiflow uploads — just fetch, transform, and store CSVs */
   dryRun?: boolean;
-  /** Run only a specific phase: 'wo' (work orders + import), 'commands', 'transactions' */
+  /** Run only a specific phase: 'wo', 'reschedule', 'commands', 'transactions', 'sync' */
   phase?: string;
+  /** Explicit dry run ID to source CSVs from (used by queue-chained cron phases) */
+  sourceRunId?: number;
 }
 
 /**
@@ -33,7 +35,7 @@ export async function runPipeline(
   triggerType: 'manual' | 'cron' = 'manual',
   options: RunOptions = {}
 ): Promise<RunResult> {
-  const { dryRun = false, phase } = options;
+  const { dryRun = false, phase, sourceRunId: explicitSourceRunId } = options;
 
   // 1. Create run record
   const runLabel = dryRun ? 'dry_run' : phase ? `phase:${phase}` : triggerType;
@@ -55,7 +57,7 @@ export async function runPipeline(
     // For phase-based execution, reuse stored CSVs from the most recent dry run
     // instead of re-fetching from Jira (which would exceed the subrequest limit)
     if (phase) {
-      return await runPhase(env, runId, phase, config);
+      return await runPhase(env, runId, phase, config, explicitSourceRunId);
     }
 
     // 3. Fetch from Jira
@@ -126,23 +128,28 @@ export async function runPipeline(
 /**
  * Run a single phase using stored CSVs from the most recent dry run.
  * This avoids re-fetching from Jira and hitting the subrequest limit.
+ * Pass explicitSourceRunId when chaining phases via queue to avoid race conditions.
  */
 async function runPhase(
   env: Env,
   runId: number,
   phase: string,
-  config: PipelineConfig
+  config: PipelineConfig,
+  explicitSourceRunId?: number
 ): Promise<RunResult> {
-  // Find the most recent dry run that has stored CSVs
-  const lastDryRun = await env.DB
-    .prepare("SELECT id FROM runs WHERE status = 'dry_run' ORDER BY id DESC LIMIT 1")
-    .first<{ id: number }>();
+  let sourceRunId: number;
 
-  if (!lastDryRun) {
-    throw new Error('No dry run found. Run a dry run first to generate CSVs before uploading.');
+  if (explicitSourceRunId !== undefined) {
+    sourceRunId = explicitSourceRunId;
+  } else {
+    const lastDryRun = await env.DB
+      .prepare("SELECT id FROM runs WHERE status = 'dry_run' ORDER BY id DESC LIMIT 1")
+      .first<{ id: number }>();
+    if (!lastDryRun) {
+      throw new Error('No dry run found. Run a dry run first to generate CSVs before uploading.');
+    }
+    sourceRunId = lastDryRun.id;
   }
-
-  const sourceRunId = lastDryRun.id;
   const stats: RunStats = { fetched: 0, excluded: 0, workOrders: 0, commands: 0, transactions: 0, closed: 0, errors: 0 };
 
   if (phase === 'wo') {
@@ -202,6 +209,12 @@ async function runPhase(
     await env.DB.batch(statements);
     stats.workOrders = snapshot.length;
 
+    await completeRun(env, runId, stats, 'ok');
+    return { runId, stats };
+  }
+
+  if (phase === 'reschedule') {
+    await runScheduler(env, config);
     await completeRun(env, runId, stats, 'ok');
     return { runId, stats };
   }

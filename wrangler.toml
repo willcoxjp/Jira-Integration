@@ -7,6 +7,18 @@ binding = "DB"
 database_name = "jira-integration"
 database_id = "4d983478-f684-4e8a-bcae-cf909291d963"
 
-# Uncomment to enable scheduled runs (e.g., 6 AM UTC weekdays)
-# [triggers]
-# crons = ["0 6 * * 1-5"]
+# Queue for chaining pipeline phases across separate Worker invocations.
+# Each phase gets a fresh subrequest budget, avoiding the "Too many subrequests" error.
+# Before deploying: npx wrangler queues create jira-pipeline
+[[queues.producers]]
+binding = "PIPELINE_QUEUE"
+queue = "jira-pipeline"
+
+[[queues.consumers]]
+queue = "jira-pipeline"
+max_batch_size = 1
+max_retries = 2
+
+# Runs Mon-Fri at 6 AM UTC (2 AM ET) — dry run only, then chains phases via queue
+[triggers]
+crons = ["0 6 * * 1-5"]

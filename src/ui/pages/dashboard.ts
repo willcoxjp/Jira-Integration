@@ -16,6 +16,12 @@ export async function dashboardPage(env: Env): Promise<string> {
     .prepare("SELECT COUNT(*) as total FROM order_sync_state WHERE was_closed = 0")
     .first<{ total: number }>();
 
+  // Cron enabled setting (default true if unset)
+  const cronSetting = await env.DB
+    .prepare("SELECT value FROM settings WHERE key='cron_enabled'")
+    .first<{ value: string }>();
+  const cronEnabled = cronSetting?.value !== 'false';
+
   // Recent runs
   const recentRuns = await env.DB
     .prepare("SELECT id, trigger_type, started_at, finished_at, status, stats_json FROM runs ORDER BY id DESC LIMIT 10")
@@ -55,13 +61,28 @@ export async function dashboardPage(env: Env): Promise<string> {
 </div>
 
 <div class="card">
+  <div class="card-header" style="justify-content:space-between;align-items:center">
+    <h2 style="margin:0">Cron Schedule</h2>
+    <span style="font-size:13px;color:#64748b">Mon–Fri 6:00 AM UTC &nbsp;|&nbsp; Status:
+      <strong style="color:${cronEnabled ? '#16a34a' : '#dc2626'}">${cronEnabled ? 'Enabled' : 'Disabled'}</strong>
+    </span>
+    <button class="btn ${cronEnabled ? 'btn-outline' : 'btn-primary'}" id="cronToggleBtn"
+      onclick="toggleCron(${cronEnabled})"
+      title="${cronEnabled ? 'Disable the scheduled cron run' : 'Enable the scheduled cron run'}">
+      ${cronEnabled ? 'Disable Cron' : 'Enable Cron'}
+    </button>
+  </div>
+</div>
+
+<div class="card">
   <div class="card-header">
     <h2>Pipeline</h2>
-    <button class="btn btn-outline" onclick="triggerPhase('dry_run=true','dryBtn')" id="dryBtn">1. Dry Run</button>
-    <button class="btn btn-primary" onclick="triggerPhase('phase=wo','woBtn')" id="woBtn">2. Upload WOs</button>
-    <button class="btn btn-primary" onclick="triggerPhase('phase=commands','cmdBtn')" id="cmdBtn">3. Commands</button>
-    <button class="btn btn-primary" onclick="triggerPhase('phase=transactions','txnBtn')" id="txnBtn">4. Transactions</button>
-    <button class="btn btn-outline" onclick="triggerPhase('phase=sync','syncBtn')" id="syncBtn">5. Sync State</button>
+    <button class="btn btn-outline" onclick="triggerPhase('dry_run=true','dryBtn')" id="dryBtn" title="Fetch from Jira, transform, and stage CSVs for review. Nothing is sent to Intuiflow. Required before steps 2–5.">1. Dry Run</button>
+    <button class="btn btn-primary" onclick="triggerPhase('phase=wo','woBtn')" id="woBtn" title="Upload the staged work orders CSV to Intuiflow. Uses data from the last Dry Run.">2. Upload WOs</button>
+    <button class="btn btn-primary" onclick="triggerPhase('phase=reschedule','schedBtn')" id="schedBtn" title="Trigger the Intuiflow scheduler for the configured location (POST /api/v2/job/scheduling). Run after Upload WOs and before Commands.">3. Reschedule</button>
+    <button class="btn btn-primary" onclick="triggerPhase('phase=commands','cmdBtn')" id="cmdBtn" title="Send Release/Close commands to Intuiflow for orders whose status changed since the last sync. Uses data from the last Dry Run.">4. Commands</button>
+    <button class="btn btn-primary" onclick="triggerPhase('phase=transactions','txnBtn')" id="txnBtn" title="Post receive transactions to Intuiflow for completed operations. Uses data from the last Dry Run.">5. Transactions</button>
+    <button class="btn btn-outline" onclick="triggerPhase('phase=sync','syncBtn')" id="syncBtn" title="Update the internal tracker with the results of this run. Future runs use this to detect what changed. Run after steps 2–5.">6. Sync State</button>
   </div>
   ${lastRun ? `
   <p style="font-size:13px;color:#64748b">
@@ -111,6 +132,20 @@ async function triggerPhase(qs,btnId){
   }catch(e){
     showToast(e.message,'error');
   }finally{btn.disabled=false;btn.textContent=origText}
+}
+async function toggleCron(currentlyEnabled){
+  const btn=document.getElementById('cronToggleBtn');
+  btn.disabled=true;
+  try{
+    const res=await fetch('/api/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({cron_enabled:currentlyEnabled?'false':'true'})});
+    const r=await res.json();
+    if(!r.ok)throw new Error(r.error||'Failed to update setting');
+    showToast('Cron '+(currentlyEnabled?'disabled':'enabled'));
+    setTimeout(()=>location.reload(),800);
+  }catch(e){
+    showToast(e.message,'error');
+    btn.disabled=false;
+  }
 }
 </script>`;
 
