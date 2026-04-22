@@ -1,5 +1,6 @@
 import type { Env } from '../../types';
 import { layout } from '../layout';
+import { formatScheduleSummary, type CronScheduleConfig } from '../../utils/cron-schedule';
 
 export async function dashboardPage(env: Env): Promise<string> {
   // Get last run
@@ -16,11 +17,20 @@ export async function dashboardPage(env: Env): Promise<string> {
     .prepare("SELECT COUNT(*) as total FROM order_sync_state WHERE was_closed = 0")
     .first<{ total: number }>();
 
-  // Cron enabled setting (default true if unset)
-  const cronSetting = await env.DB
-    .prepare("SELECT value FROM settings WHERE key='cron_enabled'")
-    .first<{ value: string }>();
-  const cronEnabled = cronSetting?.value !== 'false';
+  // Cron schedule summary
+  const cronRows = await env.DB
+    .prepare("SELECT key, value FROM settings WHERE key IN ('cron_enabled','cron_timezone','cron_days','cron_hour','cron_minute')")
+    .all<{ key: string; value: string }>();
+  const cronS: Record<string, string> = {};
+  for (const r of cronRows.results) cronS[r.key] = r.value;
+  const cronConfig: CronScheduleConfig = {
+    enabled:  cronS.cron_enabled !== 'false',
+    timezone: cronS.cron_timezone ?? 'America/New_York',
+    days:     (cronS.cron_days ?? '1,2,3,4,5').split(',').map(Number),
+    hour:     parseInt(cronS.cron_hour ?? '6', 10),
+    minute:   parseInt(cronS.cron_minute ?? '0', 10),
+  };
+  const cronSummary = formatScheduleSummary(cronConfig);
 
   // Recent runs
   const recentRuns = await env.DB
@@ -61,16 +71,15 @@ export async function dashboardPage(env: Env): Promise<string> {
 </div>
 
 <div class="card">
-  <div class="card-header" style="justify-content:space-between;align-items:center">
-    <h2 style="margin:0">Cron Schedule</h2>
-    <span style="font-size:13px;color:#64748b">Mon–Fri 6:00 AM UTC &nbsp;|&nbsp; Status:
-      <strong style="color:${cronEnabled ? '#16a34a' : '#dc2626'}">${cronEnabled ? 'Enabled' : 'Disabled'}</strong>
-    </span>
-    <button class="btn ${cronEnabled ? 'btn-outline' : 'btn-primary'}" id="cronToggleBtn"
-      onclick="toggleCron(${cronEnabled})"
-      title="${cronEnabled ? 'Disable the scheduled cron run' : 'Enable the scheduled cron run'}">
-      ${cronEnabled ? 'Disable Cron' : 'Enable Cron'}
-    </button>
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem">
+    <div>
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:#64748b;margin-bottom:2px">Cron Schedule</div>
+      <div style="font-size:14px;font-weight:600;color:#0f172a">${cronSummary}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:0.75rem">
+      <span class="badge ${cronConfig.enabled ? 'badge-ok' : 'badge-error'}">${cronConfig.enabled ? 'Enabled' : 'Disabled'}</span>
+      <a href="/cron" class="btn btn-outline btn-sm">Manage</a>
+    </div>
   </div>
 </div>
 
@@ -132,20 +141,6 @@ async function triggerPhase(qs,btnId){
   }catch(e){
     showToast(e.message,'error');
   }finally{btn.disabled=false;btn.textContent=origText}
-}
-async function toggleCron(currentlyEnabled){
-  const btn=document.getElementById('cronToggleBtn');
-  btn.disabled=true;
-  try{
-    const res=await fetch('/api/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({cron_enabled:currentlyEnabled?'false':'true'})});
-    const r=await res.json();
-    if(!r.ok)throw new Error(r.error||'Failed to update setting');
-    showToast('Cron '+(currentlyEnabled?'disabled':'enabled'));
-    setTimeout(()=>location.reload(),800);
-  }catch(e){
-    showToast(e.message,'error');
-    btn.disabled=false;
-  }
 }
 </script>`;
 

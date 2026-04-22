@@ -5,7 +5,11 @@
 -- SETTINGS
 -- ============================================================
 INSERT OR REPLACE INTO settings (key, value, description) VALUES
-  ('cron_enabled', 'true', 'Enable/disable the scheduled cron pipeline (toggle from dashboard)'),
+  ('cron_enabled',   'true',              'Enable/disable the scheduled cron pipeline'),
+  ('cron_timezone',  'America/New_York',  'IANA timezone for cron schedule (e.g. America/New_York)'),
+  ('cron_days',      '1,2,3,4,5',         'Days of week to run: 0=Sun,1=Mon,...,6=Sat (comma-separated)'),
+  ('cron_hour',      '6',                 'Hour to run in the configured timezone (0-23)'),
+  ('cron_minute',    '0',                 'Minute to run: 0, 15, 30, or 45'),
   ('location', 'DD Tech', 'Intuiflow location name'),
   ('order_type', 'WO', 'Intuiflow order type'),
   ('unit_of_measure', 'HR', 'Unit of measure for work orders'),

@@ -1,5 +1,6 @@
 const NAV_ITEMS = [
   { path: '/', label: 'Dashboard' },
+  { path: '/cron', label: 'Cron' },
   { path: '/settings', label: 'Settings' },
   { path: '/part-types', label: 'Part Types' },
   { path: '/routings', label: 'Routings' },

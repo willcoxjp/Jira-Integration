@@ -19,6 +19,8 @@ queue = "jira-pipeline"
 max_batch_size = 1
 max_retries = 2
 
-# Runs Mon-Fri at 6 AM UTC (2 AM ET) — dry run only, then chains phases via queue
+# Polls every 15 minutes. The scheduled handler checks D1 settings (cron_days,
+# cron_hour, cron_minute, cron_timezone) to decide whether to run the pipeline.
+# Configure the actual run time via the /cron UI page.
 [triggers]
-crons = ["0 6 * * 1-5"]
+crons = ["*/15 * * * *"]

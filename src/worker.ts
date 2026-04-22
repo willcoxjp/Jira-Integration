@@ -1,7 +1,9 @@
 import type { Env, PipelineQueueMessage } from './types';
 import { apiRouter } from './api/router';
 import { runPipeline } from './pipeline/runner';
+import { matchesSchedule, getNextPhase, type CronScheduleConfig } from './utils/cron-schedule';
 import { dashboardPage } from './ui/pages/dashboard';
+import { cronPage } from './ui/pages/cron';
 import { settingsPage } from './ui/pages/settings';
 import { partTypesPage } from './ui/pages/part-types';
 import { routingsPage } from './ui/pages/routings';
@@ -19,22 +21,34 @@ function html(body: string, status = 200): Response {
   });
 }
 
+async function loadCronConfig(env: Env): Promise<CronScheduleConfig> {
+  const rows = await env.DB
+    .prepare("SELECT key, value FROM settings WHERE key IN ('cron_enabled','cron_timezone','cron_days','cron_hour','cron_minute')")
+    .all<{ key: string; value: string }>();
+  const s: Record<string, string> = {};
+  for (const row of rows.results) s[row.key] = row.value;
+  return {
+    enabled:  s.cron_enabled !== 'false',
+    timezone: s.cron_timezone ?? 'America/New_York',
+    days:     (s.cron_days ?? '1,2,3,4,5').split(',').map(Number),
+    hour:     parseInt(s.cron_hour  ?? '6',  10),
+    minute:   parseInt(s.cron_minute ?? '0', 10),
+  };
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    // Health check
     if (path === '/health') {
       return new Response('OK', { status: 200 });
     }
 
-    // API routes
     if (path.startsWith('/api/')) {
       return apiRouter(request, env, url);
     }
 
-    // UI pages (GET only)
     if (request.method !== 'GET') {
       return new Response('Method not allowed', { status: 405 });
     }
@@ -43,6 +57,8 @@ export default {
       switch (path) {
         case '/':
           return html(await dashboardPage(env));
+        case '/cron':
+          return html(await cronPage(env));
         case '/settings':
           return html(await settingsPage(env));
         case '/part-types':
@@ -72,17 +88,13 @@ export default {
 
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil((async () => {
-      // Respect the cron_enabled toggle from the dashboard
-      const setting = await env.DB
-        .prepare("SELECT value FROM settings WHERE key='cron_enabled'")
-        .first<{ value: string }>();
-      if (setting?.value === 'false') {
-        console.log('Cron disabled via settings — skipping run.');
-        return;
+      const config = await loadCronConfig(env);
+      if (!matchesSchedule(new Date(), config)) {
+        return; // This 15-min slot isn't the configured run time
       }
 
-      // Run dry run only (Jira fetch + transform + store CSVs).
-      // Upload phases are chained via queue so each gets a fresh subrequest budget.
+      // Dry run only — fetch Jira, transform, store CSVs.
+      // Each upload phase gets its own Worker invocation via queue.
       const { runId } = await runPipeline(env, 'cron', { dryRun: true });
       await env.PIPELINE_QUEUE.send({ phase: 'wo', sourceRunId: runId });
     })().catch((err) => {
@@ -95,7 +107,7 @@ export default {
       const { phase, sourceRunId } = message.body;
       try {
         await runPipeline(env, 'cron', { phase, sourceRunId });
-        const next = PHASE_SEQUENCE[PHASE_SEQUENCE.indexOf(phase) + 1];
+        const next = getNextPhase(phase);
         if (next) {
           await env.PIPELINE_QUEUE.send({ phase: next, sourceRunId });
         }
@@ -107,5 +119,3 @@ export default {
     }
   },
 };
-
-const PHASE_SEQUENCE = ['wo', 'reschedule', 'commands', 'transactions', 'sync'];
