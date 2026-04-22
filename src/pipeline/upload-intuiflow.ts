@@ -213,7 +213,7 @@ export async function runScheduler(env: Env, config: PipelineConfig): Promise<vo
   const apiKey = env.INTUIFLOW_API_KEY;
   if (!apiKey) throw new Error('Missing INTUIFLOW_API_KEY secret');
 
-  const res = await fetch(`${base}/api/v2/job/scheduling?api_key=${apiKey}`, {
+  const res = await fetch(`${base}/api/v2/job/schedule?api_key=${apiKey}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ locationId: config.location }),
