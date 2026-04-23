@@ -34,7 +34,7 @@ export async function dashboardPage(env: Env): Promise<string> {
 
   // Recent runs
   const recentRuns = await env.DB
-    .prepare("SELECT id, trigger_type, started_at, finished_at, status, stats_json FROM runs ORDER BY id DESC LIMIT 10")
+    .prepare("SELECT id, trigger_type, started_at, finished_at, status, stats_json, error_text FROM runs ORDER BY id DESC LIMIT 10")
     .all();
 
   let stats: any = {};
@@ -118,7 +118,7 @@ export async function dashboardPage(env: Env): Promise<string> {
         <td class="mono">${r.started_at?.substring(0,19) || ''}</td>
         <td>${dur}</td>
         <td>${statusBadge(r.status)}</td>
-        <td class="mono" style="font-size:11px">${s.workOrders ?? '-'} WO, ${s.commands ?? '-'} cmd, ${s.transactions ?? '-'} txn</td>
+        <td class="mono" style="font-size:11px">${s.workOrders ?? '-'} WO, ${s.commands ?? '-'} cmd, ${s.transactions ?? '-'} txn${r.error_text ? `<br><span style="color:#dc2626">${escapeHtml(String(r.error_text).substring(0, 200))}</span>` : ''}</td>
         <td><a href="/runs?id=${r.id}" class="btn btn-outline btn-sm">Details</a></td>
       </tr>`;
     }).join('')}
