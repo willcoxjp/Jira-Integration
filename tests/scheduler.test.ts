@@ -30,7 +30,7 @@ describe('runScheduler', () => {
     vi.clearAllMocks();
   });
 
-  it('calls POST /api/v2/job/scheduling with location from config', async () => {
+  it('calls GET /api/v2/job/schedule with locationName query param', async () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: vi.fn().mockResolvedValue('') });
     globalThis.fetch = mockFetch;
 
@@ -39,11 +39,34 @@ describe('runScheduler', () => {
 
     expect(mockFetch).toHaveBeenCalledOnce();
     const [url, init] = mockFetch.mock.calls[0];
-    expect(url).toContain('/api/v2/job/scheduling');
-    expect(url).toContain('api_key=test-key');
-    expect(init.method).toBe('POST');
-    const body = JSON.parse(init.body);
-    expect(body.locationId).toBe('DD Tech');
+    expect(url).toContain('/api/v2/job/schedule');
+    expect(url).toMatch(/locationName=DD[\s+%20]?Tech/);
+    expect(init?.method ?? 'GET').toBe('GET');
+    expect(init?.body).toBeUndefined();
+  });
+
+  it('sends API_Key (correct casing) as query param', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: vi.fn().mockResolvedValue('') });
+    globalThis.fetch = mockFetch;
+
+    const { runScheduler } = await import('../src/pipeline/upload-intuiflow');
+    await runScheduler(makeMockEnv().env, makeConfig() as PipelineConfig);
+
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toContain('API_Key=test-key');
+    expect(url).not.toContain('api_key=');
+  });
+
+  it('sends doRunPacketBuilder=true and doRunExecutionPriorityIfEnabled=false', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: vi.fn().mockResolvedValue('') });
+    globalThis.fetch = mockFetch;
+
+    const { runScheduler } = await import('../src/pipeline/upload-intuiflow');
+    await runScheduler(makeMockEnv().env, makeConfig() as PipelineConfig);
+
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toContain('doRunPacketBuilder=false');
+    expect(url).toContain('doRunExecutionPriorityIfEnabled=false');
   });
 
   it('uses the Intuiflow base URL from the connector', async () => {
