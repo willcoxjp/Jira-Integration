@@ -47,7 +47,20 @@ export async function fetchJiraIssues(
     const issues = json.issues || [];
     results.push(...issues);
 
-    if (issues.length === 0) break;
+    if (issues.length === 0) {
+      // Jira answers /search/jql with HTTP 200 and an empty issue list when the
+      // credentials are bad — it does NOT return 401 here. Without this check an
+      // expired API token is indistinguishable from "the JQL matched nothing",
+      // which is exactly how a dead token went unnoticed from 2026-04-23 to
+      // 2026-08-12: every run recorded `fetched: 0` and reported success, and the
+      // only visible symptom was a misleading "No work orders CSV found in dry
+      // run #N" thrown one phase later by runner.ts.
+      //
+      // Only preflight when the result set is empty, so the normal path costs no
+      // extra subrequest (the Worker has a hard subrequest budget per invocation).
+      if (results.length === 0) await assertCredentialsValid(base, auth);
+      break;
+    }
 
     // Use nextPageToken for pagination
     nextPageToken = json.nextPageToken;
@@ -55,6 +68,32 @@ export async function fetchJiraIssues(
   }
 
   return results;
+}
+
+/**
+ * Verify JIRA_BASIC_AUTH still authenticates, and throw a self-explanatory error if not.
+ *
+ * /rest/api/3/myself is the cheapest endpoint that actually honors auth (it returns a
+ * real 401), unlike /search/jql. Called only when a search comes back empty.
+ *
+ * To rotate the token: create one at
+ * https://id.atlassian.com/manage-profile/security/api-tokens then run
+ *   npx wrangler secret put JIRA_BASIC_AUTH
+ * with the base64 of "<email>:<api-token>".
+ */
+async function assertCredentialsValid(base: string, auth: string): Promise<void> {
+  const res = await fetch(`${base}/rest/api/3/myself`, {
+    headers: { Authorization: `Basic ${auth}`, Accept: 'application/json' },
+  });
+
+  if (res.status === 401 || res.status === 403) {
+    throw new Error(
+      `Jira credentials rejected (${res.status} from /myself). The JIRA_BASIC_AUTH token is ` +
+        `expired or revoked — note that /search/jql hides this by returning 200 with zero ` +
+        `issues. Rotate the token at https://id.atlassian.com/manage-profile/security/api-tokens ` +
+        `and run: npx wrangler secret put JIRA_BASIC_AUTH`
+    );
+  }
 }
 
 /**
